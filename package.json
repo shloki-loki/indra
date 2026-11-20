@@ -1,0 +1,15 @@
+{
+  "name": "indra",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "dev": "npm run dev -w @indra/web"
+  },
+  "overrides": {
+    "csstype": "3.1.3"
+  }
+}
