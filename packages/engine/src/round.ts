@@ -131,7 +131,7 @@ function keepError(s: RoundState): string {
 export function applyAction(state: RoundState, seat: number, action: Action): Result {
   if (state.phase === 'over') return fail('The round is over.');
   if (seat !== state.turn) return fail('It is not your turn.');
-  const s: RoundState = structuredClone(state);
+  const s = cloneRound(state);
   const side = sideOf(seat);
   const hand = s.hands[seat];
 
@@ -228,6 +228,26 @@ export function applyAction(state: RoundState, seat: number, action: Action): Re
       return { ok: true, state: s };
     }
   }
+}
+
+/**
+ * Copy a round for the next transition. Cards and melds are never mutated in place (melds are
+ * replaced whole), so they can be shared; only the containers are copied. Much faster than
+ * structuredClone, which matters for the Expert bot's thousands of simulated turns.
+ */
+export function cloneRound(s: RoundState): RoundState {
+  return {
+    ...s,
+    hands: s.hands.map((h) => h.slice()),
+    pit: s.pit.slice(),
+    discard: s.discard.slice(),
+    indra: s.indra.slice(),
+    melds: s.melds.slice(),
+    openingRequired: s.openingRequired.slice(),
+    opened: s.opened.slice(),
+    shows: s.shows.slice(),
+    pickups: s.pickups.slice(),
+  };
 }
 
 /** Pit deck empty: shuffle the discard pile (except its top card) into a new pit deck. */

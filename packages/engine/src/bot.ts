@@ -14,6 +14,8 @@
  *               top discard against the average pit draw, won't feed the opponents' melds, saves
  *               2s for when they matter, searches for the best set of melds to lay down, and
  *               protects pure 7-card bonuses.
+ *   Expert    – see expert.ts: imagines the hidden cards many ways and plays the rest of the round
+ *               out for each option, then picks what scores best on average.
  *
  * Measured (scripts/tournament.ts, 1 vs 1, 400 rounds): each level beats the one below by roughly
  * 8–10 points a round and wins about 56–62% of rounds against it.
@@ -21,11 +23,14 @@
 import { type Card, SUITS, cardValue, isTwo } from './cards';
 import { type MeldShape, addOptions, meldCards, meldValue, newMeldOptions, rankAtPosition } from './melds';
 import { type Action, type RoundState, OPENING_MINIMUM, applyAction, seatsOfSide, sideOf } from './round';
+import { planExpertTurn } from './expert';
 
-export type BotLevel = 'beginner' | 'medium' | 'advanced';
+export type BotLevel = 'beginner' | 'medium' | 'advanced' | 'expert';
+/** The rule-of-thumb levels (Expert builds on Advanced by simulating). */
+export type HeuristicLevel = Exclude<BotLevel, 'expert'>;
 /** Tuning switches (used by scripts/tournament.ts experiments). */
 export const TUNE = { danger: 0.25, hoard: true, jokerCost: 3, takeMargin: 3, urgentAt: 3, sevenFirst: true, mediumGreedy: true };
-export const BOT_LEVELS: readonly BotLevel[] = ['beginner', 'medium', 'advanced'];
+export const BOT_LEVELS: readonly BotLevel[] = ['beginner', 'medium', 'advanced', 'expert'];
 
 // ---------------------------------------------------------------- meld candidates
 
@@ -97,7 +102,7 @@ interface Knowledge {
   wanted: Map<string, number>;
 }
 
-function knowledge(s: RoundState, seat: number, level: BotLevel): Knowledge {
+function knowledge(s: RoundState, seat: number, level: HeuristicLevel): Knowledge {
   const seen = new Map<string, number>();
   const see = (c: Card) => seen.set(key(c.rank, c.suit), (seen.get(key(c.rank, c.suit)) ?? 0) + 1);
   s.hands[seat].forEach(see);
@@ -144,14 +149,14 @@ function parseId(id: string): [number, string] {
 // ---------------------------------------------------------------- situation
 
 interface Situation {
-  level: BotLevel;
+  level: HeuristicLevel;
   /** Weight on a card's point value when deciding to keep it (risk of being stuck with it). */
   risk: number;
   /** The round could end any moment: dump points, use 2s freely. */
   urgent: boolean;
 }
 
-function situation(s: RoundState, seat: number, level: BotLevel): Situation {
+function situation(s: RoundState, seat: number, level: HeuristicLevel): Situation {
   const opponents = seatsOfSide(s.players, 1 - sideOf(seat));
   const fewest = Math.min(...opponents.map((o) => s.hands[o].length));
   const roundCanEnd = s.indraHolder !== null; // next show ends it
@@ -229,7 +234,7 @@ function fitsOwnMeld(s: RoundState, seat: number, card: Card): boolean {
   return s.melds.some((m) => m.side === side && addOptions(m, [card]).length > 0);
 }
 
-function shouldTakeDiscard(s: RoundState, seat: number, level: BotLevel): boolean {
+function shouldTakeDiscard(s: RoundState, seat: number, level: HeuristicLevel): boolean {
   const top = s.discard[s.discard.length - 1];
   if (!top) return false;
   const hand = s.hands[seat];
@@ -261,22 +266,28 @@ function shouldTakeDiscard(s: RoundState, seat: number, level: BotLevel): boolea
   return value > average + TUNE.takeMargin;
 }
 
-function chooseDiscard(s: RoundState, seat: number, level: BotLevel): Card {
+/** Cards in the order this level would rather throw them (first = best discard). */
+export function discardRanking(s: RoundState, seat: number, level: HeuristicLevel): Card[] {
   const hand = s.hands[seat];
-  if (hand.length === 1) return hand[0];
   const k = knowledge(s, seat, level);
   const sit = situation(s, seat, level);
   const score = (c: Card) => keepValue(c, hand, k, sit) + (level === 'advanced' ? danger(c, s, seat, k) * TUNE.danger : 0);
+  const scores = new Map(hand.map((c) => [c.id, score(c)]));
+  return [...hand].sort((a, b) => scores.get(a.id)! - scores.get(b.id)! || cardValue(b) - cardValue(a));
+}
 
+function chooseDiscard(s: RoundState, seat: number, level: HeuristicLevel): Card {
+  const hand = s.hands[seat];
+  if (hand.length === 1) return hand[0];
   if (level === 'beginner') {
     const naturals = hand.filter((c) => !isTwo(c));
     if (naturals.length && coin(s, seat, 7) < 0.3) return naturals[Math.floor(coin(s, seat, 11) * naturals.length)];
   }
-  return [...hand].sort((a, b) => score(a) - score(b) || cardValue(b) - cardValue(a))[0];
+  return discardRanking(s, seat, level)[0];
 }
 
 /** Choose melds to lay down now. Returns groups of cards (each becomes one meld). */
-function chooseLayDown(s: RoundState, seat: number, level: BotLevel): Card[][] {
+export function chooseLayDown(s: RoundState, seat: number, level: HeuristicLevel): Card[][] {
   const hand = s.hands[seat];
   const side = sideOf(seat);
   const sit = situation(s, seat, level);
@@ -328,7 +339,7 @@ function chooseLayDown(s: RoundState, seat: number, level: BotLevel): Card[][] {
 }
 
 /** Find one card to add to one of our side's melds, or null. */
-function chooseAdd(s: RoundState, seat: number, level: BotLevel): Action | null {
+export function chooseAdd(s: RoundState, seat: number, level: HeuristicLevel): Action | null {
   const side = sideOf(seat);
   if (s.openingRequired[side] && !s.opened[side]) return null;
   const hand = s.hands[seat];
@@ -368,6 +379,7 @@ function chooseAdd(s: RoundState, seat: number, level: BotLevel): Action | null 
 
 /** Plan a full turn for `seat` at `level`. Returns the actions in order. */
 export function planBotTurn(state: RoundState, seat: number, level: BotLevel = 'beginner'): Action[] {
+  if (level === 'expert') return planExpertTurn(state, seat);
   const plan = planTurn(state, seat, level, false);
   // Taking the top discard only to throw the same card back wastes the turn (and two bots can loop
   // on it forever). Draw from the pit instead.
@@ -380,7 +392,7 @@ export function planBotTurn(state: RoundState, seat: number, level: BotLevel = '
   return plan;
 }
 
-function planTurn(state: RoundState, seat: number, level: BotLevel, forcePit: boolean): Action[] {
+function planTurn(state: RoundState, seat: number, level: HeuristicLevel, forcePit: boolean): Action[] {
   const actions: Action[] = [];
   let s = state;
   const tryAction = (a: Action): boolean => {

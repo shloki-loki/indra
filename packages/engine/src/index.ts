@@ -4,3 +4,4 @@ export * from './melds';
 export * from './round';
 export * from './match';
 export * from './bot';
+export * from './expert';

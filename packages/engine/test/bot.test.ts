@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { BOT_LEVELS, type BotLevel, planBotTurn } from '../src/bot';
+import { BOT_LEVELS, type BotLevel, planBotTurn as planHeuristic } from '../src/bot';
+import { planExpertTurn } from '../src/expert';
 import { shuffle } from '../src/rng';
 import { applyMatchAction, newMatch, startNextRound, type MatchState } from '../src/match';
 import { type RoundState, applyAction, countCards, newRound, scoreRound } from '../src/round';
+
+/** Expert runs with a small simulation budget here so the suite stays fast; strength is measured in scripts/expert-vs.ts. */
+function planBotTurn(s: RoundState, seat: number, level: BotLevel) {
+  return level === 'expert' ? planExpertTurn(s, seat, { sims: 24 }) : planHeuristic(s, seat, level);
+}
 
 function playRoundWithBots(m: MatchState, levels: BotLevel[]): { match: MatchState; turns: number } {
   let turns = 0;
@@ -16,6 +22,16 @@ function playRoundWithBots(m: MatchState, levels: BotLevel[]): { match: MatchSta
       m = r.state;
       if (m.status === 'playing') expect(countCards(m.round)).toBe(104);
     }
+    // Expert plans only up to the point where it learns something new; let it finish its turn.
+    while (m.status === 'playing' && m.round.turn === seat && levels[seat % levels.length] === 'expert') {
+      const more = planBotTurn(m.round, seat, 'expert');
+      expect(more.length).toBeGreaterThan(0);
+      for (const action of more) {
+        const r = applyMatchAction(m, seat, action);
+        if (!r.ok) throw new Error(`expert bot made an illegal move: ${r.error}`);
+        m = r.state;
+      }
+    }
     turns++;
   }
   return { match: m, turns };
@@ -23,7 +39,7 @@ function playRoundWithBots(m: MatchState, levels: BotLevel[]): { match: MatchSta
 
 describe.each(BOT_LEVELS)('%s bot', (level) => {
   it.each([[2, 1], [2, 2], [4, 3], [4, 4], [2, 5], [4, 6]] as const)('finishes a %i-player round legally (seed %i)', (players, seed) => {
-    const { match, turns } = playRoundWithBots(newMatch({ players, target: 200, openingRule: true }, seed), [level]);
+    const { match, turns } = playRoundWithBots(newMatch({ players, target: 200, openingRule: true }, seed), level === 'expert' ? ['expert', 'advanced'] : [level]);
     expect(match.status).not.toBe('playing');
     expect(match.round.shows).toHaveLength(2);
     expect(turns).toBeLessThan(300);
@@ -32,7 +48,7 @@ describe.each(BOT_LEVELS)('%s bot', (level) => {
   it('plays a whole match to 200 with the opening rule on', () => {
     let m = newMatch({ players: 2, target: 200, openingRule: true }, 11);
     for (let round = 0; round < 40 && m.status !== 'match-over'; round++) {
-      m = playRoundWithBots(m, [level]).match;
+      m = playRoundWithBots(m, level === 'expert' ? ['expert', 'advanced'] : [level]).match;
       expect(m.status).not.toBe('playing'); // a round must never stall
       if (m.status === 'round-over') m = startNextRound(m);
     }
@@ -101,4 +117,24 @@ describe('levels are ordered by strength', () => {
     expect(duel('medium', 'beginner', 120)).toBeGreaterThan(2);
     expect(duel('advanced', 'medium', 120)).toBeGreaterThan(2);
   }, 120_000);
+});
+
+describe('expert imagines hidden cards fairly', () => {
+  it('keeps every visible card, every zone size, and never depends on the real hidden cards', async () => {
+    const { determinize } = await import('../src/expert');
+    let s = newRound({ players: 4, starter: 0, seed: 31 });
+    for (let turn = 0; turn < 12 && s.phase !== 'over'; turn++) {
+      const seat = s.turn;
+      for (const a of planHeuristic(s, seat, 'medium')) s = (applyAction(s, seat, a) as { ok: true; state: RoundState }).state;
+    }
+    const seat = s.turn;
+    const d = determinize(s, seat, 123);
+    expect(countCards(d)).toBe(104);
+    expect(new Set([...d.hands.flat(), ...d.pit, ...d.indra, ...d.discard].map((c) => c.id)).size + d.melds.reduce((n, m) => n + (m.kind === 'set' ? m.cards : m.slots).length, 0)).toBe(104);
+    expect(d.hands[seat]).toEqual(s.hands[seat]);
+    expect(d.discard).toEqual(s.discard);
+    expect(d.hands.map((h) => h.length)).toEqual(s.hands.map((h) => h.length));
+    expect([d.pit.length, d.indra.length]).toEqual([s.pit.length, s.indra.length]);
+    expect(determinize(reshuffleHidden(s, seat, 5), seat, 123)).toEqual(d);
+  });
 });

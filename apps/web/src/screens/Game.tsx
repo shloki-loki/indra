@@ -31,7 +31,7 @@ interface Staged {
 type Choice = { kind: 'new'; options: MeldShape[] } | { kind: 'add'; meldId: string; options: MeldShape[] };
 
 export function Game({ settings, level, onExit }: { settings: MatchSettings; level: BotLevel; onExit: () => void }) {
-  const { match, act, error, clearError, indra, nextRound, restart } = useLocalMatch(settings, level);
+  const { match, act, error, clearError, indra, thinking, nextRound, restart } = useLocalMatch(settings, level);
   const round = match.round;
   const names = seatNames(settings.players);
   const sideNames: [string, string] = settings.players === 2 ? ['You', names[1]] : ['Your team', 'Their team'];
@@ -176,7 +176,7 @@ export function Game({ settings, level, onExit }: { settings: MatchSettings; lev
   let prompt: string;
   if (match.status !== 'playing') prompt = 'Round over. Everyone\'s leftover cards are face up.';
   else if (indra) prompt = '';
-  else if (!myTurn) prompt = `${names[round.turn]} is playing…`;
+  else if (!myTurn) prompt = thinking && level === 'expert' ? `${names[round.turn]} is thinking…` : `${names[round.turn]} is playing…`;
   else if (round.phase === 'draw') prompt = top ? `Your turn. Draw from the pit, or take the ${cardName(top)}.` : 'Your turn. Draw from the pit.';
   else if (round.indraTurn) prompt = "You took Indra. Lay down what you can, then discard. You can't show this turn.";
   else if (needOpening) prompt = `Your side needs 10 points to open. Stage melds, then open (${pts(stagedTotal)} of 10 staged).`;

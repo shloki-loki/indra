@@ -6,11 +6,23 @@ interface Props {
   onBack: () => void;
 }
 
-function Segmented<T extends string | number>({ label, value, options, onChange }: { label: string; value: T; options: { value: T; label: string; note?: string; disabled?: boolean }[]; onChange: (v: T) => void }) {
+function Segmented<T extends string | number>({
+  label,
+  value,
+  options,
+  onChange,
+  columns = options.length,
+}: {
+  label: string;
+  value: T;
+  options: { value: T; label: string; note?: string; disabled?: boolean }[];
+  onChange: (v: T) => void;
+  columns?: number;
+}) {
   return (
     <fieldset className="field">
       <legend>{label}</legend>
-      <div className="segmented" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+      <div className="segmented" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
         {options.map((o) => (
           <label key={String(o.value)} className={`seg ${value === o.value ? 'on' : ''} ${o.disabled ? 'off' : ''}`}>
             <input type="radio" name={label} checked={value === o.value} disabled={o.disabled} onChange={() => onChange(o.value)} />
@@ -54,10 +66,12 @@ export function Setup({ onStart, onBack }: Props) {
         label="Computer level"
         value={level}
         onChange={setLevel}
+        columns={2}
         options={[
           { value: 'beginner', label: 'Beginner', note: 'Plays the obvious move' },
           { value: 'medium', label: 'Medium', note: 'Counts the cards it needs' },
           { value: 'advanced', label: 'Advanced', note: 'Remembers every discard' },
+          { value: 'expert', label: 'Expert', note: 'Plays each move out in its head' },
         ]}
       />
 
