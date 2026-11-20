@@ -1033,3 +1033,404 @@ button {
   color: var(--mist);
   font-size: 14px;
 }
+
+/* ------------------------------------------------------------------ online: table extras */
+
+.turn-timer {
+  position: relative;
+  height: 16px;
+  margin: 2px 16px 0;
+}
+.turn-timer-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--mist);
+  opacity: 0.45;
+  transform-origin: left center;
+  transition: transform 0.25s linear;
+}
+.turn-timer.mine .turn-timer-bar {
+  background: var(--brass);
+  opacity: 1;
+}
+.turn-timer.urgent .turn-timer-bar {
+  background: var(--sindoor);
+  opacity: 1;
+}
+.turn-timer-text {
+  position: absolute;
+  right: 0;
+  bottom: 5px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--mist);
+  font-variant-numeric: tabular-nums;
+}
+.turn-timer.urgent .turn-timer-text {
+  color: var(--error);
+}
+
+.chat-btn {
+  position: relative;
+}
+.badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--sindoor);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.chat-sheet {
+  display: flex;
+  flex-direction: column;
+  height: min(70dvh, 560px);
+}
+.chat-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.chat-log {
+  flex: 1;
+  min-height: 120px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0 10px;
+}
+.chat-empty,
+.chat-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--mist);
+  text-align: center;
+}
+.chat-line {
+  margin: 0;
+  max-width: 85%;
+  align-self: flex-start;
+  padding: 6px 11px 7px;
+  border-radius: 14px 14px 14px 4px;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.chat-line.me {
+  align-self: flex-end;
+  border-radius: 14px 14px 4px 14px;
+  background: rgba(201, 162, 74, 0.2);
+}
+.chat-name {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--brass-hi);
+}
+.chat-line.me .chat-name {
+  display: none;
+}
+.chat-input {
+  display: flex;
+  gap: 8px;
+}
+.chat-input input,
+.text-field input,
+.code-input,
+.level-select {
+  min-width: 0;
+  padding: 11px 13px;
+  border-radius: 12px;
+  border: 1px solid rgba(230, 198, 119, 0.35);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  font: 500 16px var(--ui);
+}
+.chat-input input {
+  flex: 1;
+}
+.chat-toast {
+  position: fixed;
+  z-index: 30;
+  top: calc(56px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(420px, calc(100% - 32px));
+  padding: 8px 14px;
+  border-radius: 14px;
+  background: rgba(10, 30, 36, 0.94);
+  border: 1px solid rgba(230, 198, 119, 0.3);
+  font-size: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+.chat-toast .chat-name {
+  display: inline;
+}
+.reconnect {
+  position: fixed;
+  z-index: 50;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 20px;
+  background: var(--sindoor);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ online: entry and lobby */
+
+.text-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 22px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--mist);
+}
+.entry-actions {
+  display: grid;
+  gap: 12px;
+  margin-top: 22px;
+}
+@media (min-width: 560px) {
+  .entry-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.entry-card {
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.entry-card h2,
+.team-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--mist);
+}
+.code-form {
+  display: flex;
+  gap: 8px;
+}
+.code-input {
+  flex: 1;
+  width: 0;
+  font: 400 26px/1 var(--display);
+  letter-spacing: 0.3em;
+  text-align: center;
+  text-transform: uppercase;
+  padding: 8px 10px;
+}
+.code-input::placeholder {
+  color: rgba(167, 192, 195, 0.4);
+}
+.form-error {
+  color: var(--error);
+  margin: 14px 0 0;
+}
+
+.room-code-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 22px;
+  padding: 18px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(230, 198, 119, 0.3);
+  background: rgba(0, 0, 0, 0.18);
+}
+.room-code-label {
+  font-size: 14px;
+  color: var(--mist);
+}
+.room-code {
+  font: 400 56px/1 var(--display);
+  letter-spacing: 0.18em;
+  margin-right: -0.18em;
+  color: var(--brass-hi);
+}
+.teams {
+  display: grid;
+  gap: 14px;
+}
+@media (min-width: 560px) {
+  .teams {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.team {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lobby-seats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lobby-seat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.15);
+}
+.lobby-seat.open {
+  border-style: dashed;
+  background: none;
+}
+.lobby-seat.picked {
+  border-color: var(--brass);
+  background: rgba(201, 162, 74, 0.14);
+}
+.lobby-seat-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.lobby-seat-main:disabled {
+  cursor: default;
+}
+.lobby-avatar {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: 400 19px/1 var(--display);
+  background: var(--brass);
+  color: var(--ink);
+}
+.lobby-seat.open .lobby-avatar,
+.lobby-seat.bot .lobby-avatar {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--mist);
+  font: 600 15px/1 var(--ui);
+}
+.lobby-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.lobby-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lobby-tag {
+  font-size: 13px;
+  color: var(--mist);
+}
+.level-select {
+  flex: none;
+  padding: 7px 8px;
+  font-size: 14px;
+}
+.hint {
+  font-size: 13px;
+  color: var(--mist);
+  margin: 10px 0 0;
+}
+.lobby-summary {
+  margin: 22px 0 4px;
+  color: var(--mist);
+}
+.lobby-chat {
+  margin-top: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lobby-chat .chat-log {
+  max-height: 240px;
+}
+
+/* Each side's score sits on its own half of the table: theirs at the top, yours by your hand. */
+.sheet-btn {
+  flex: 1;
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  line-height: 1.2;
+}
+.sheet-btn-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.sheet-btn-note {
+  font-size: 11px;
+  color: var(--mist);
+}
+.meld-head {
+  position: sticky;
+  top: -10px;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  margin: -4px 0 4px;
+  pointer-events: none;
+}
+.meld-head .score-pill {
+  pointer-events: auto;
+  appearance: none;
+  color: inherit;
+  cursor: pointer;
+  background: rgba(8, 26, 31, 0.75);
+}
+.score-pill.mine {
+  border-color: rgba(230, 198, 119, 0.25);
+}
+.score-pill.on {
+  border-color: var(--brass);
+}
+/* Seats sit above the piles, so a card flying from the pit to a player stays in view. */
+.seats {
+  position: relative;
+  z-index: 5;
+}

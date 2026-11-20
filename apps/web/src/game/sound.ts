@@ -93,7 +93,9 @@ export function thunder(): void {
 
 export function buzz(): void {
   try {
-    navigator.vibrate?.(12);
+    // Browsers refuse vibration until the person has tapped the page; don't ask before that.
+    const active = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive ?? true;
+    if (active) navigator.vibrate?.(12);
   } catch {
     /* not supported */
   }

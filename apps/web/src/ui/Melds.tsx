@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { type Meld, meldBonus, meldCards } from '@indra/engine';
 import { pts } from '../game/format';
 import { CardFace } from './Card';
@@ -8,12 +9,15 @@ interface Props {
   addable?: ReadonlySet<string>;
   onTapMeld?: (id: string) => void;
   label: string;
+  /** This side's score, shown on its own half of the table. */
+  score?: ReactNode;
 }
 
 /** One side's melds on the table. Melds you can add to glow while cards are selected. */
-export function MeldArea({ melds, emptyText, addable, onTapMeld, label }: Props) {
+export function MeldArea({ melds, emptyText, addable, onTapMeld, label, score }: Props) {
   return (
     <section className="meld-area" aria-label={label}>
+      {score && <div className="meld-head">{score}</div>}
       {melds.length === 0 && <p className="meld-empty">{emptyText}</p>}
       <div className="meld-grid">
         {melds.map((m) => {

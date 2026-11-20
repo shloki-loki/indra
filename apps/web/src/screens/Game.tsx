@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import {
-  type BotLevel,
   type MatchSettings,
   type MeldShape,
   OPENING_MINIMUM,
@@ -15,7 +14,9 @@ import {
 } from '@indra/engine';
 import { type SortMode, cardName, pts, sortHand } from '../game/format';
 import { buzz, isMuted, setMuted } from '../game/sound';
-import { HUMAN, seatNames, useLocalMatch } from '../game/useLocalMatch';
+import type { TableController } from '../game/controller';
+import { HUMAN } from '../game/useLocalMatch';
+import { ChatButton, ChatSheet, ChatToast, DropPrompt, EndedOverlay, ReconnectBanner, TurnTimer } from '../online/TableExtras';
 import { CardFace } from '../ui/Card';
 import { Hand } from '../ui/Hand';
 import { MeldArea } from '../ui/Melds';
@@ -30,10 +31,9 @@ interface Staged {
 
 type Choice = { kind: 'new'; options: MeldShape[] } | { kind: 'add'; meldId: string; options: MeldShape[] };
 
-export function Game({ settings, level, onExit }: { settings: MatchSettings; level: BotLevel; onExit: () => void }) {
-  const { match, act, error, clearError, indra, thinking, nextRound, restart } = useLocalMatch(settings, level);
+export function Game({ controller, settings, onExit }: { controller: TableController; settings: MatchSettings; onExit: () => void }) {
+  const { match, act, error, clearError, indra, thinking, nextRound, restart, names, online } = controller;
   const round = match.round;
-  const names = seatNames(settings.players);
   const sideNames: [string, string] = settings.players === 2 ? ['You', names[1]] : ['Your team', 'Their team'];
   const mySide = sideOf(HUMAN);
 
@@ -47,6 +47,11 @@ export function Game({ settings, level, onExit }: { settings: MatchSettings; lev
   const [sheetOpen, setSheetOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [muted, setMutedState] = useState(isMuted());
+  const [chatOpen, setChatOpen] = useState(false);
+  /** Says which card was just picked up, e.g. "You drew the 7♥ from the pit." */
+  const [drawNote, setDrawNote] = useState<string | null>(null);
+  const prevRound = useRef(round);
+  const prevRounds = useRef(match.history.length);
 
   const myTurn = match.status === 'playing' && round.turn === HUMAN && !indra;
   const handAll = round.hands[HUMAN];
@@ -85,6 +90,30 @@ export function Game({ settings, level, onExit }: { settings: MatchSettings; lev
       return next.size === prev.size ? prev : next;
     });
   }, [handAll]);
+
+  useEffect(() => {
+    const p = prevRound.current;
+    const sameRound = prevRounds.current === match.history.length;
+    prevRound.current = round;
+    prevRounds.current = match.history.length;
+    if (p === round) return;
+    if (!sameRound || round.turn !== p.turn) {
+      setDrawNote(null);
+      return;
+    }
+    if (p.phase !== 'draw' || round.phase !== 'play') return;
+    const seat = round.turn;
+    const fromDiscard = round.pickups.length > p.pickups.length;
+    const pile = fromDiscard ? 'the discard pile' : 'the pit';
+    if (seat === HUMAN) {
+      const before = new Set(p.hands[HUMAN].map((c) => c.id));
+      const card = round.hands[HUMAN].find((c) => !before.has(c.id));
+      setDrawNote(card ? `You ${fromDiscard ? 'took' : 'drew'} the ${cardName(card)} from ${pile}.` : null);
+    } else {
+      const taken = p.discard[p.discard.length - 1];
+      setDrawNote(fromDiscard && taken ? `${names[seat]} took the ${cardName(taken)} from the discard pile.` : `${names[seat]} drew a card from the pit.`);
+    }
+  }, [round, match.history.length, names]);
 
   useEffect(() => {
     if (!error) return;
@@ -176,14 +205,24 @@ export function Game({ settings, level, onExit }: { settings: MatchSettings; lev
   let prompt: string;
   if (match.status !== 'playing') prompt = 'Round over. Everyone\'s leftover cards are face up.';
   else if (indra) prompt = '';
-  else if (!myTurn) prompt = thinking && level === 'expert' ? `${names[round.turn]} is thinking…` : `${names[round.turn]} is playing…`;
+  else if (!myTurn) prompt = thinking ? `${thinking} is thinking…` : drawNote ?? `${names[round.turn]} is playing…`;
   else if (round.phase === 'draw') prompt = top ? `Your turn. Draw from the pit, or take the ${cardName(top)}.` : 'Your turn. Draw from the pit.';
   else if (round.indraTurn) prompt = "You took Indra. Lay down what you can, then discard. You can't show this turn.";
+  else if (round.mustLay && needOpening) prompt = `You took the discard, so open with 10 points this turn. Stage melds, then open (${pts(stagedTotal)} of 10 staged).`;
+  else if (round.mustLay && selectedCards.length === 0) prompt = `${drawNote ?? 'You took the discard.'} Now lay down or add at least one card before you discard.`;
   else if (needOpening) prompt = `Your side needs 10 points to open. Stage melds, then open (${pts(stagedTotal)} of 10 staged).`;
-  else if (selectedCards.length === 0) prompt = 'Select cards to lay down or add to a meld, then discard one card.';
+  else if (selectedCards.length === 0) prompt = drawNote ? `${drawNote} Lay down or add cards, then discard one.` : 'Select cards to lay down or add to a meld, then discard one card.';
   else if (addable.size) prompt = 'Tap a glowing meld to add, or lay down a new one.';
   else if (newOptions.length) prompt = `That's a ${newOptions[0].kind}. ${needOpening ? 'Stage it' : 'Lay it down'}, or select more cards.`;
   else prompt = selectedCards.length === 1 ? (showing ? 'Tap the discard pile to show!' : 'Tap the discard pile to discard it, or select more cards.') : 'Select at least 3 cards that make a set or a run.';
+
+  const scorePill = (side: number) => (
+    <button type="button" className={`score-pill ${side === mySide ? 'mine' : 'theirs'} ${round.turn % 2 === side && match.status === 'playing' ? 'on' : ''}`} onClick={() => setSheetOpen(true)} aria-label={`${sideNames[side]}: ${pts(live[side].live)} this round, ${pts(match.scores[side])} in the match. Open the score sheet.`}>
+      <span className="who">{sideNames[side]}</span>
+      <span className="live">{pts(live[side].live)}</span>
+      <span className="total">match {pts(match.scores[side])}</span>
+    </button>
+  );
 
   const myMelds = round.melds.filter((m) => m.side === mySide);
   const theirMelds = round.melds.filter((m) => m.side !== mySide);
@@ -197,18 +236,11 @@ export function Game({ settings, level, onExit }: { settings: MatchSettings; lev
               <path d="M15 5 L8 12 L15 19" />
             </svg>
           </button>
-          <button type="button" className="scores" onClick={() => setSheetOpen(true)} aria-label="Open the score sheet">
-            <span className={`score-pill mine ${round.turn % 2 === mySide ? 'on' : ''}`}>
-              <span className="who">{sideNames[0]}</span>
-              <span className="live">{pts(live[0].live)}</span>
-              <span className="total">match {pts(match.scores[0])}</span>
-            </span>
-            <span className={`score-pill theirs ${round.turn % 2 !== mySide ? 'on' : ''}`}>
-              <span className="who">{sideNames[1]}</span>
-              <span className="live">{pts(live[1].live)}</span>
-              <span className="total">match {pts(match.scores[1])}</span>
-            </span>
+          <button type="button" className="sheet-btn" onClick={() => setSheetOpen(true)} aria-label="Open the score sheet">
+            <span className="sheet-btn-title">Score sheet</span>
+            <span className="sheet-btn-note">{settings.target === null ? 'No target' : `First to ${settings.target}`}</span>
           </button>
+          {online && <ChatButton online={online} onOpen={() => setChatOpen(true)} />}
           <button
             type="button"
             className="icon-btn"
@@ -228,7 +260,7 @@ export function Game({ settings, level, onExit }: { settings: MatchSettings; lev
 
         <Seats players={settings.players} names={names} hands={round.hands} turn={match.status === 'playing' ? round.turn : -1} indraHolder={round.indraHolder} reveal={match.status !== 'playing'} />
 
-        <MeldArea label={`${sideNames[1]} melds`} melds={theirMelds} emptyText={`${sideNames[1] === 'Their team' ? 'Their' : `${sideNames[1]}'s`} melds will appear here.`} />
+        <MeldArea label={`${sideNames[1]} melds`} score={scorePill(1 - mySide)} melds={theirMelds} emptyText={`${sideNames[1] === 'Their team' ? 'Their' : `${sideNames[1]}'s`} melds will appear here.`} />
 
         <Piles
           pit={round.pit}
@@ -242,7 +274,7 @@ export function Game({ settings, level, onExit }: { settings: MatchSettings; lev
           onDiscard={discard}
         />
 
-        <MeldArea label="Your melds" melds={myMelds} emptyText={needOpening ? 'Open with at least 10 points this round.' : 'Your melds will appear here.'} addable={addable} onTapMeld={tapMeld} />
+        <MeldArea label="Your melds" score={scorePill(mySide)} melds={myMelds} emptyText={needOpening ? 'Open with at least 10 points this round.' : 'Your melds will appear here.'} addable={addable} onTapMeld={tapMeld} />
 
         {staged.length > 0 && (
           <div className="staging" aria-label="Staged melds">
@@ -273,6 +305,7 @@ export function Game({ settings, level, onExit }: { settings: MatchSettings; lev
         <div className={`prompt ${error ? 'error' : ''}`} role="status" aria-live="polite">
           {error ?? prompt}
         </div>
+        {online && match.status === 'playing' && !indra && <TurnTimer deadline={online.deadline} mine={myTurn} total={online.turnSeconds} />}
 
         <Hand cards={hand} selected={selected} onToggle={toggle} onMove={moveCard} disabled={!myTurn} />
 
@@ -322,8 +355,18 @@ export function Game({ settings, level, onExit }: { settings: MatchSettings; lev
 
         <IndraFlash show={!!indra} name={indra ? names[indra.seat] : null} />
 
-        {match.status !== 'playing' && !viewingTable && (
-          <RoundOver match={match} sideNames={sideNames} names={names} onNext={nextRound} onRestart={restart} onHome={onExit} onViewTable={() => setViewingTable(true)} />
+        {match.status !== 'playing' && !viewingTable && (!online || !online.ended) && (
+          <RoundOver match={match} sideNames={sideNames} names={names} onNext={nextRound} onRestart={restart} onHome={() => (online ? setLeaving(true) : onExit())} onViewTable={() => setViewingTable(true)} />
+        )}
+
+        {online && (
+          <>
+            <ChatToast online={online} hidden={chatOpen} />
+            {chatOpen && <ChatSheet online={online} onClose={() => setChatOpen(false)} />}
+            <DropPrompt online={online} />
+            <EndedOverlay online={online} onLeave={onExit} />
+            <ReconnectBanner online={online} />
+          </>
         )}
 
         {leaving && (
@@ -332,7 +375,7 @@ export function Game({ settings, level, onExit }: { settings: MatchSettings; lev
               <h2 id="leave-title" className="modal-title">
                 Leave this game?
               </h2>
-              <p className="modal-note">The match and its score sheet will be lost.</p>
+              <p className="modal-note">{online ? 'The others will be asked whether a bot should take your seat. You can rejoin with the room code.' : 'The match and its score sheet will be lost.'}</p>
               <div className="modal-actions">
                 <button type="button" className="btn" onClick={onExit}>
                   Leave game

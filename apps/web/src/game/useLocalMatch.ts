@@ -8,6 +8,7 @@ import {
   newMatch,
   startNextRound,
 } from '@indra/engine';
+import type { IndraMoment, TableController } from './controller';
 import { planFor } from './planner';
 import { fan, snap, thunder } from './sound';
 
@@ -17,12 +18,10 @@ export function seatNames(players: 2 | 4): string[] {
   return players === 2 ? ['You', 'Arjun'] : ['You', 'Arjun', 'Meera', 'Kabir'];
 }
 
-export interface IndraMoment {
-  seat: number;
-  key: number;
-}
+export type { IndraMoment } from './controller';
 
-const BOT_DELAY = { draw: 750, meld: 650, add: 450, discard: 600 } as const;
+/** Pause before each bot move, so a person can follow what happened. */
+const BOT_DELAY = { draw: 1750, meld: 1650, add: 1450, discard: 1600 } as const;
 const FLASH_MS = 2600;
 
 function playSound(action: Action) {
@@ -31,7 +30,7 @@ function playSound(action: Action) {
   else snap(action.type === 'draw' ? 1.1 : 0.85);
 }
 
-export function useLocalMatch(settings: MatchSettings, level: BotLevel) {
+export function useLocalMatch(settings: MatchSettings, level: BotLevel): TableController {
   const [match, setMatch] = useState<MatchState>(() => newMatch(settings, (Date.now() ^ (Math.random() * 1e9)) | 0));
   const [error, setError] = useState<string | null>(null);
   const [indra, setIndra] = useState<IndraMoment | null>(null);
@@ -122,5 +121,16 @@ export function useLocalMatch(settings: MatchSettings, level: BotLevel) {
     setMatch(fresh);
   }, [settings]);
 
-  return { match, act, error, clearError: () => setError(null), indra, thinking, nextRound, restart };
+  const names = seatNames(settings.players);
+  return {
+    match,
+    names,
+    act,
+    error,
+    clearError: () => setError(null),
+    indra,
+    thinking: thinking && level === 'expert' && match.status === 'playing' ? names[match.round.turn] : null,
+    nextRound,
+    restart,
+  };
 }

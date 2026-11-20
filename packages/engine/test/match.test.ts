@@ -52,8 +52,9 @@ describe('match', () => {
     const m = newMatch({ players: 2, target: 1, openingRule: false }, 1);
     const round = makeRound({ hands: ['', 'KD KS KC'], phase: 'over' });
     round.shows = [0, 0];
+    round.indraHolder = 0;
     const closed = closeRound({ ...m, round });
-    expect(closed.scores).toEqual([40, -6]);
+    expect(closed.scores).toEqual([40, -6]); // first show with Indra +10, second show +10
     expect(closed.winner).toBe(0);
   });
 

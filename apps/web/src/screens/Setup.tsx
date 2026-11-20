@@ -6,7 +6,7 @@ interface Props {
   onBack: () => void;
 }
 
-function Segmented<T extends string | number>({
+export function Segmented<T extends string | number>({
   label,
   value,
   options,

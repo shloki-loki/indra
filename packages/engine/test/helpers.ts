@@ -14,6 +14,8 @@ export function makeRound(opts: {
   turn?: number;
   phase?: RoundState['phase'];
   openingRequired?: boolean[];
+  /** Turns already played (0 = the round's first move, exempt from the discard-pickup rule). */
+  turns?: number;
 }): RoundState {
   const players = opts.players ?? 2;
   return {
@@ -31,6 +33,8 @@ export function makeRound(opts: {
     opened: [false, false],
     shows: [],
     pickups: [],
+    turns: opts.turns ?? 0,
+    mustLay: false,
     nextMeldId: 1,
     seed: 42,
   };

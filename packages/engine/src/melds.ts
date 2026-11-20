@@ -6,7 +6,7 @@
  * is the rank of that position. Any other card in a run must be a 2 (a joker),
  * and a meld may hold at most one joker.
  */
-import { type Card, type Suit, cardsValue, isTwo } from './cards';
+import { type Card, type Suit, SUITS, cardsValue, isTwo } from './cards';
 
 export const MIN_MELD = 3;
 export const RUN_POSITIONS = 14;
@@ -182,4 +182,62 @@ export function describeMeld(m: MeldShape): string {
   const lo = label(rankAtPosition(m.start));
   const hi = label(rankAtPosition(m.start + m.slots.length - 1));
   return `run ${lo}${SYM[m.suit]}–${hi}${SYM[m.suit]}`;
+}
+
+// ---------------------------------------------------------------- meld candidates
+
+/** Groups of cards in `hand` that could be laid down as new melds (may overlap). */
+export function meldCandidates(hand: readonly Card[], allowJokers = true): Card[][] {
+  const out: Card[][] = [];
+  const seen = new Set<string>();
+  const push = (g: Card[]) => {
+    const k = g.map((c) => c.id).sort().join(',');
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(g);
+  };
+  const twos = allowJokers ? hand.filter(isTwo) : [];
+  const naturals = hand.filter((c) => !isTwo(c));
+
+  const byRank = new Map<number, Card[]>();
+  for (const c of naturals) byRank.set(c.rank, [...(byRank.get(c.rank) ?? []), c]);
+  // A set made only of 2s counts as real 2s.
+  const allTwos = hand.filter(isTwo);
+  if (allowJokers && allTwos.length >= 3) push(allTwos.slice(0, Math.max(3, allTwos.length)));
+  for (const group of byRank.values()) {
+    if (group.length >= 3) {
+      push(group);
+      if (group.length > 3) for (let i = 0; i < group.length; i++) push(group.filter((_, j) => j !== i));
+    } else if (group.length === 2 && twos.length) push([...group, twos[0]]);
+  }
+
+  for (const suit of SUITS) {
+    for (const aceHigh of [false, true]) {
+      const occ: (Card | null)[] = new Array(14).fill(null);
+      for (const c of hand) {
+        if (c.suit !== suit) continue;
+        if (c.rank === 1) occ[aceHigh ? 13 : 0] ??= c;
+        else if (c.rank !== 2) occ[c.rank - 1] ??= c;
+      }
+      const natural2 = hand.find((c) => c.rank === 2 && c.suit === suit) ?? null;
+      if (natural2) occ[1] = natural2;
+      for (let start = 0; start < 14; start++) {
+        if (!occ[start] && !(twos.length && occ[start + 1])) continue;
+        const run: Card[] = [];
+        let joker: Card | null = null;
+        for (let p = start; p < 14; p++) {
+          const card = occ[p];
+          if (card) run.push(card);
+          else {
+            const spare = twos.find((t) => t !== natural2 && !run.includes(t));
+            if (joker || !spare) break;
+            joker = spare;
+            run.push(spare);
+          }
+          if (run.length >= 3) push([...run]);
+        }
+      }
+    }
+  }
+  return out.filter((g) => newMeldOptions(g).length > 0);
 }

@@ -21,74 +21,26 @@
  * 8–10 points a round and wins about 56–62% of rounds against it.
  */
 import { type Card, SUITS, cardValue, isTwo } from './cards';
-import { type MeldShape, addOptions, meldCards, meldValue, newMeldOptions, rankAtPosition } from './melds';
-import { type Action, type RoundState, OPENING_MINIMUM, applyAction, seatsOfSide, sideOf } from './round';
+import { type MeldShape, addOptions, meldCandidates, meldCards, meldValue, newMeldOptions, rankAtPosition } from './melds';
+import { type Action, type RoundState, OPENING_MINIMUM, applyAction, minimalLayDown, seatsOfSide, sideOf } from './round';
 import { planExpertTurn } from './expert';
 
 export type BotLevel = 'beginner' | 'medium' | 'advanced' | 'expert';
 /** The rule-of-thumb levels (Expert builds on Advanced by simulating). */
 export type HeuristicLevel = Exclude<BotLevel, 'expert'>;
 /** Tuning switches (used by scripts/tournament.ts experiments). */
-export const TUNE = { danger: 0.25, hoard: true, jokerCost: 3, takeMargin: 3, urgentAt: 3, sevenFirst: true, mediumGreedy: true };
+export const TUNE = {
+  danger: 0.25,
+  hoard: true,
+  jokerCost: 3,
+  takeMargin: 3,
+  urgentAt: 3,
+  sevenFirst: true,
+  mediumGreedy: true,
+  /** Advanced/Expert: keep melds hidden in hand until laying them down would leave at most this many cards (0 = off). */
+  holdUntil: 0,
+};
 export const BOT_LEVELS: readonly BotLevel[] = ['beginner', 'medium', 'advanced', 'expert'];
-
-// ---------------------------------------------------------------- meld candidates
-
-/** Groups of cards in `hand` that could be laid down as new melds (may overlap). */
-export function meldCandidates(hand: readonly Card[], allowJokers = true): Card[][] {
-  const out: Card[][] = [];
-  const seen = new Set<string>();
-  const push = (g: Card[]) => {
-    const k = g.map((c) => c.id).sort().join(',');
-    if (seen.has(k)) return;
-    seen.add(k);
-    out.push(g);
-  };
-  const twos = allowJokers ? hand.filter(isTwo) : [];
-  const naturals = hand.filter((c) => !isTwo(c));
-
-  const byRank = new Map<number, Card[]>();
-  for (const c of naturals) byRank.set(c.rank, [...(byRank.get(c.rank) ?? []), c]);
-  // A set made only of 2s counts as real 2s.
-  const allTwos = hand.filter(isTwo);
-  if (allowJokers && allTwos.length >= 3) push(allTwos.slice(0, Math.max(3, allTwos.length)));
-  for (const group of byRank.values()) {
-    if (group.length >= 3) {
-      push(group);
-      if (group.length > 3) for (let i = 0; i < group.length; i++) push(group.filter((_, j) => j !== i));
-    } else if (group.length === 2 && twos.length) push([...group, twos[0]]);
-  }
-
-  for (const suit of SUITS) {
-    for (const aceHigh of [false, true]) {
-      const occ: (Card | null)[] = new Array(14).fill(null);
-      for (const c of hand) {
-        if (c.suit !== suit) continue;
-        if (c.rank === 1) occ[aceHigh ? 13 : 0] ??= c;
-        else if (c.rank !== 2) occ[c.rank - 1] ??= c;
-      }
-      const natural2 = hand.find((c) => c.rank === 2 && c.suit === suit) ?? null;
-      if (natural2) occ[1] = natural2;
-      for (let start = 0; start < 14; start++) {
-        if (!occ[start] && !(twos.length && occ[start + 1])) continue;
-        const run: Card[] = [];
-        let joker: Card | null = null;
-        for (let p = start; p < 14; p++) {
-          const card = occ[p];
-          if (card) run.push(card);
-          else {
-            const spare = twos.find((t) => t !== natural2 && !run.includes(t));
-            if (joker || !spare) break;
-            joker = spare;
-            run.push(spare);
-          }
-          if (run.length >= 3) push([...run]);
-        }
-      }
-    }
-  }
-  return out.filter((g) => newMeldOptions(g).length > 0);
-}
 
 // ---------------------------------------------------------------- what the bot knows
 
@@ -234,6 +186,12 @@ function fitsOwnMeld(s: RoundState, seat: number, card: Card): boolean {
   return s.melds.some((m) => m.side === side && addOptions(m, [card]).length > 0);
 }
 
+function wouldLayDown(s: RoundState, seat: number, level: HeuristicLevel): boolean {
+  const r = applyAction(s, seat, { type: 'draw', from: 'discard' });
+  if (!r.ok) return false;
+  return chooseLayDown(r.state, seat, level).length > 0 || chooseAdd(r.state, seat, level) !== null;
+}
+
 function shouldTakeDiscard(s: RoundState, seat: number, level: HeuristicLevel): boolean {
   const top = s.discard[s.discard.length - 1];
   if (!top) return false;
@@ -243,6 +201,9 @@ function shouldTakeDiscard(s: RoundState, seat: number, level: HeuristicLevel): 
   if (hand.length <= 2) return false;
   if (meldCandidates([...hand, top], level !== 'beginner').some((g) => g.some((c) => c.id === top.id))) return true;
   if (level === 'beginner') return false;
+  // After the first move, taking the discard forces a lay-down. Only take a card for its value
+  // when we'd lay something down this turn anyway.
+  if (s.turns > 0 && !wouldLayDown(s, seat, level)) return false;
   if (isTwo(top)) return true;
 
   const k = knowledge(s, seat, level);
@@ -335,6 +296,11 @@ export function chooseLayDown(s: RoundState, seat: number, level: HeuristicLevel
     }
   };
   pick(0, new Set(), [], 0, 0, 0);
+  // Hiding melds: lay down only when it takes us close to going out (or time is short).
+  if (TUNE.holdUntil > 0 && !sit.urgent && !needOpening && s.indraHolder === null) {
+    const left = hand.length - best.reduce((n, g) => n + g.length, 0);
+    if (left > TUNE.holdUntil) return [];
+  }
   return best;
 }
 
@@ -416,6 +382,11 @@ function planTurn(state: RoundState, seat: number, level: HeuristicLevel, forceP
       const add = chooseAdd(s, seat, level);
       const added = add ? tryAction(add) : false;
       if (!laid && !added) break;
+    }
+    // Took the discard but laid nothing down: the rule says lay down at least one card first.
+    if (s.mustLay) {
+      const forced = minimalLayDown(s, seat);
+      if (forced) tryAction(forced);
     }
     tryAction({ type: 'discard', cardId: chooseDiscard(s, seat, level).id });
     // Still our turn only if we just showed and took Indra: play the Indra turn too.

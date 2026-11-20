@@ -5,6 +5,8 @@ import { SUIT_SYMBOL, cardName, isRed } from '../game/format';
 export type CardSize = 'hand' | 'mini' | 'tiny';
 
 const spring = { type: 'spring', stiffness: 420, damping: 36, mass: 0.8 } as const;
+/** Face-down cards (an opponent's draw) glide slowly enough to follow from the pile to their seat. */
+const glide = { type: 'tween', duration: 0.6, ease: [0.22, 1, 0.36, 1] } as const;
 
 export function Bolt({ className }: { className?: string }) {
   return (
@@ -89,5 +91,5 @@ export function CardFace({ card, size = 'hand', selected, joker, onClick, style,
 }
 
 export function CardBack({ id, size = 'hand', style }: { id?: string; size?: CardSize; style?: MotionStyle }) {
-  return <motion.div layoutId={id} transition={spring} className={`card back ${size}`} style={style} aria-hidden="true" />;
+  return <motion.div layoutId={id} transition={glide} className={`card back ${size}`} style={style} aria-hidden="true" />;
 }

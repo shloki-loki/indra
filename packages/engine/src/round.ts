@@ -10,6 +10,7 @@ import {
   addOptions,
   chooseOption,
   meldBonus,
+  meldCandidates,
   meldCards,
   meldValue,
   newMeldOptions,
@@ -49,6 +50,10 @@ export interface RoundState {
   shows: number[];
   /** Public log of cards taken from the discard pile (everyone saw them). */
   pickups: { seat: number; cardId: string }[];
+  /** Turns completed this round (0 until the first player discards). */
+  turns: number;
+  /** Took the top discard this turn: must lay down or add at least one card before discarding. */
+  mustLay: boolean;
   nextMeldId: number;
   seed: number;
 }
@@ -96,6 +101,8 @@ export function newRound({ players, starter, seed, openingRequired = [false, fal
     opened: [false, false],
     shows: [],
     pickups: [],
+    turns: 0,
+    mustLay: false,
     nextMeldId: 1,
     seed: shuffled.seed,
   };
@@ -139,10 +146,24 @@ export function applyAction(state: RoundState, seat: number, action: Action): Re
     case 'draw': {
       if (s.phase !== 'draw') return fail('You have already drawn this turn.');
       if (action.from === 'discard') {
+        // The pit can't be used (empty and nothing to reshuffle): taking the discard is the only move.
+        const pitDead = s.pit.length === 0 && s.discard.length <= 1;
         const card = s.discard.pop();
         if (!card) return fail('The discard pile is empty.');
         hand.push(card);
         s.pickups.push({ seat, cardId: card.id });
+        // Rule: after the round's very first move, taking the discard means laying down at least one card.
+        if (s.turns > 0 && !pitDead) {
+          s.phase = 'play';
+          if (!minimalLayDown(s, seat)) {
+            return fail(
+              s.openingRequired[side] && !s.opened[side]
+                ? "You can only take the discard if you can open with 10 points this turn."
+                : 'You can only take the discard if you can lay down at least one card this turn.',
+            );
+          }
+          s.mustLay = true;
+        }
       } else {
         if (s.pit.length === 0) refillPit(s);
         const card = s.pit.pop();
@@ -177,6 +198,7 @@ export function applyAction(state: RoundState, seat: number, action: Action): Re
       s.hands[seat] = rest;
       for (const shape of shapes) s.melds.push({ ...shape, id: `m${s.nextMeldId++}`, side, owner: seat });
       s.opened[side] = true;
+      s.mustLay = false;
       return { ok: true, state: s };
     }
 
@@ -195,6 +217,7 @@ export function applyAction(state: RoundState, seat: number, action: Action): Re
       if (rest.length < minimumKept(s)) return fail(keepError(s));
       s.hands[seat] = rest;
       s.melds[index] = { ...shape, id: meld.id, side: meld.side, owner: meld.owner };
+      s.mustLay = false;
       return { ok: true, state: s };
     }
 
@@ -202,10 +225,12 @@ export function applyAction(state: RoundState, seat: number, action: Action): Re
       if (s.phase !== 'play') return fail('Draw a card first.');
       const card = hand.find((c) => c.id === action.cardId);
       if (!card) return fail('That card is not in your hand.');
+      if (s.mustLay) return fail('You took from the discard pile, so lay down or add at least one card before you discard.');
       const rest = removeFromHand(hand, [card.id]);
       if (rest.length === 0 && s.indraTurn) return fail(keepError(s));
       s.hands[seat] = rest;
       s.discard.push(card);
+      s.turns = (s.turns ?? 0) + 1;
 
       if (rest.length > 0) {
         s.indraTurn = false;
@@ -250,6 +275,55 @@ export function cloneRound(s: RoundState): RoundState {
   };
 }
 
+/**
+ * A smallest legal lay-down for `seat` right now (one add, or one new meld; or enough melds to
+ * open with 10 points when the opening rule applies), always keeping a card to discard. Null if none.
+ * Used to check the "take the discard, lay something down" rule and by bots that must follow it.
+ */
+export function minimalLayDown(s: RoundState, seat: number): Action | null {
+  const hand = s.hands[seat];
+  const side = sideOf(seat);
+  const keep = minimumKept(s);
+  const needOpening = s.openingRequired[side] && !s.opened[side];
+  if (!needOpening && hand.length - 1 >= keep) {
+    for (const m of s.melds) {
+      if (m.side !== side) continue;
+      for (const c of hand) {
+        const options = addOptions(m, [c]);
+        if (options.length) return { type: 'add', meldId: m.id, cardIds: [c.id], start: options[0].kind === 'run' ? options[0].start : undefined };
+      }
+    }
+  }
+  const groups = meldCandidates(hand)
+    .filter((g) => hand.length - g.length >= keep)
+    .map((g) => ({ g, value: meldValue(newMeldOptions(g)[0]) }))
+    .sort((a, b) => a.g.length - b.g.length);
+  if (!needOpening) return groups.length ? { type: 'meld', melds: [{ cardIds: groups[0].g.map((c) => c.id) }] } : null;
+
+  // Opening: find melds that don't share cards, worth 10+ together.
+  let found: Card[][] | null = null;
+  let nodes = 0;
+  const search = (from: number, used: Set<string>, chosen: Card[][], value: number, count: number): void => {
+    if (found || ++nodes > 3000) return;
+    if (value >= OPENING_MINIMUM) {
+      found = chosen.slice();
+      return;
+    }
+    for (let i = from; i < groups.length; i++) {
+      const { g, value: v } = groups[i];
+      if (g.some((c) => used.has(c.id)) || hand.length - count - g.length < keep) continue;
+      g.forEach((c) => used.add(c.id));
+      chosen.push(g);
+      search(i + 1, used, chosen, value + v, count + g.length);
+      chosen.pop();
+      g.forEach((c) => used.delete(c.id));
+    }
+  };
+  search(0, new Set(), [], 0, 0);
+  const melds = found as Card[][] | null;
+  return melds ? { type: 'meld', melds: melds.map((g) => ({ cardIds: g.map((c) => c.id) })) } : null;
+}
+
 /** Pit deck empty: shuffle the discard pile (except its top card) into a new pit deck. */
 function refillPit(s: RoundState): void {
   if (s.discard.length <= 1) return;
@@ -280,8 +354,9 @@ export function scoreRound(s: RoundState): SideScore[] {
     const melds = s.melds.filter((m) => m.side === side);
     const table = melds.reduce((sum, m) => sum + cardsValue(meldCards(m)), 0);
     let bonus = melds.reduce((sum, m) => sum + meldBonus(m), 0);
-    bonus += s.shows.filter((seat) => sideOf(seat) === side).length * SHOW_BONUS;
+    // Showing first IS taking Indra: one +10. The second show (which ends the round) is another +10.
     if (s.indraHolder !== null && sideOf(s.indraHolder) === side) bonus += INDRA_BONUS;
+    bonus += s.shows.slice(1).filter((seat) => sideOf(seat) === side).length * SHOW_BONUS;
     const hand = seatsOfSide(s.players, side).reduce((sum, seat) => sum + cardsValue(s.hands[seat]), 0);
     return { table, bonus, hand, total: table + bonus - hand, live: table + bonus };
   });
@@ -292,7 +367,7 @@ export interface BonusItem {
   /** The seat that earned it (the meld's owner for 7-card bonuses). */
   seat: number;
   kind: 'show' | 'indra' | 'meld';
-  /** Plain description, e.g. "Showed first", "Took the Indra deck", "run 3♥–9♥, 7 cards, no wild 2". */
+  /** Plain description, e.g. "Showed first and took the Indra deck", "run 3♥–9♥: 7 cards with no wild 2". */
   label: string;
   /** Half-points. */
   points: number;
@@ -302,10 +377,8 @@ export interface BonusItem {
 export function bonusBreakdown(s: RoundState): BonusItem[] {
   const items: BonusItem[] = [];
   s.shows.forEach((seat, i) => {
-    items.push({ side: sideOf(seat), seat, kind: 'show', label: i === 0 ? 'Showed first' : 'Showed second and ended the round', points: SHOW_BONUS });
-    if (i === 0 && s.indraHolder === seat) {
-      items.push({ side: sideOf(seat), seat, kind: 'indra', label: 'Took the Indra deck', points: INDRA_BONUS });
-    }
+    if (i === 0) items.push({ side: sideOf(seat), seat, kind: 'indra', label: 'Showed first and took the Indra deck', points: INDRA_BONUS });
+    else items.push({ side: sideOf(seat), seat, kind: 'show', label: 'Showed second and ended the round', points: SHOW_BONUS });
   });
   for (const m of s.melds) {
     const bonus = meldBonus(m);

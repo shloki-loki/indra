@@ -39,7 +39,7 @@ All 104 cards together are worth 88 points. A card is worth the same on the tabl
 ## 3. A turn
 
 1. **Draw.** Take exactly one card from either:
-   - the **top of the discard pile**. You don't have to use it this turn.
+   - the **top of the discard pile**. Except on the round's very first move, taking it means you **must lay down or add at least one card this turn** (any card counts, not necessarily the one you took). You may only take it if you can do that; with the 10-point opening rule in force, that means opening with 10 this turn. If the pit is used up and can't be refilled, taking the discard is always allowed. *(Added 2026-11-20.)*
    - the **top of the pit deck**.
 2. **Play (optional).** As many times as you like:
    - lay down new melds of 3 or more cards;
@@ -47,7 +47,7 @@ All 104 cards together are worth 88 points. A card is worth the same on the tabl
    - swap a real card for a joker (see 4.4).
 3. **Discard.** End the turn by putting one card on the discard pile.
    - Any card may be discarded, including a 2.
-   - You may discard the same card you just took from the discard pile.
+   - You may discard the same card you just took from the discard pile, once you've laid something down.
 
 You can never put down every card in your hand during step 2, because you must keep one card to discard.
 
@@ -97,10 +97,10 @@ You can never put down every card in your hand during step 2, because you must k
 
 ### 6.1 Show
 - You **show** when your discard empties your hand. You must finish with a discard.
-- Each show earns **+10**.
+- Each show earns **+10**. The first show and taking Indra are the same event, so they earn **+10 together**, not 20.
 
 ### 6.2 First show: the Indra deck
-1. The first player to show gets **+10 for the show** and **+10 for taking Indra**.
+1. The first player to show gets **+10** (showing first and taking Indra are one bonus).
 2. They take the 13 Indra cards into their hand.
 3. It is immediately their turn again, but they **don't draw**, because the Indra cards count as their draw.
 4. In that turn they may lay down and add cards as usual, and they must end it with a discard.
@@ -114,8 +114,8 @@ You can never put down every card in your hand during step 2, because you must k
 
 | Bonus | Points |
 |---|---|
-| Show (1st or 2nd) | +10 |
-| Taking the Indra deck | +10 |
+| First show (takes the Indra deck) | +10 |
+| Second show (ends the round) | +10 |
 | Any meld (set or run) of 7+ cards with no joker (**pure**) | +20 |
 | Any meld of 7+ cards with one joker (**impure**) | +10 |
 
@@ -163,7 +163,7 @@ A round score can be negative.
   - Target score (200, or no limit).
   - 10-point opening rule (on/off).
   - Turn timer (60 s default).
-- **Turn timer:** if time runs out, the player automatically draws from the pit deck and discards their least useful card. **[DEFAULT]**
+- **Turn timer:** if time runs out, the player automatically draws from the pit deck and discards the card they drew. If they had already taken the discard, the smallest legal lay-down is made for them first.
 - **Dropped player (1 vs 1 or 2 vs 2):** the others are offered a bot to replace them. If they decline, the game ends.
 - **Platform:** mobile first, also desktop. English only.
 - **Later:** brainstorm twists, for example making the second show different from the first.

@@ -40,16 +40,3 @@ export function Home({ go }: { go: (s: Screen) => void }) {
     </main>
   );
 }
-
-export function Online({ onBack }: { onBack: () => void }) {
-  return (
-    <main className="page">
-      <button type="button" className="back-link" onClick={onBack}>
-        Back
-      </button>
-      <h1 className="page-title">Play online</h1>
-      <p className="lede">Online rooms are the next thing being built. You'll create a room, share its code, and play 1 vs 1 or 2 vs 2 with chat at the table.</p>
-      <p className="lede">Until then, you can play against the computer.</p>
-    </main>
-  );
-}

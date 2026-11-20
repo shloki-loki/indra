@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cardsValue } from '../src/cards';
-import { type Action, type RoundState, applyAction, bonusBreakdown, countCards, newRound, scoreRound, viewFor } from '../src/round';
+import { type Action, type RoundState, applyAction, bonusBreakdown, countCards, minimalLayDown, newRound, scoreRound, viewFor } from '../src/round';
 import { cards, ids, makeRound } from './helpers';
 
 function play(state: RoundState, seat: number, action: Action): RoundState {
@@ -164,16 +164,15 @@ describe('shows and the Indra deck', () => {
     expect(s.shows).toEqual([0, 1]);
 
     const [mine, theirs] = scoreRound(s);
-    expect(mine).toEqual({ table: 3, bonus: 40, hand: 20, total: 23, live: 43 }); // 1½ + 10 + 10 − 10
+    expect(mine).toEqual({ table: 3, bonus: 20, hand: 20, total: 3, live: 23 }); // 1½ + 10 (showing first = taking Indra) − 10
     expect(theirs).toEqual({ table: 9, bonus: 20, hand: 0, total: 29, live: 29 }); // 4½ + 10
     expect(reject(s, 0, { type: 'draw', from: 'pit' })).toMatch(/over/);
 
-    // Each bonus is listed on its own line: show and Indra are 10 points each.
+    // Showing first and taking Indra are one event worth 10; the second show is another 10.
     const items = bonusBreakdown(s);
-    expect(items.map((b) => [b.seat, b.kind, b.points / 2])).toEqual([
-      [0, 'show', 10],
-      [0, 'indra', 10],
-      [1, 'show', 10],
+    expect(items.map((b) => [b.seat, b.kind, b.points / 2, b.label])).toEqual([
+      [0, 'indra', 10, 'Showed first and took the Indra deck'],
+      [1, 'show', 10, 'Showed second and ended the round'],
     ]);
     for (const side of [0, 1]) {
       const fromItems = items.filter((b) => b.side === side).reduce((n, b) => n + b.points, 0);
@@ -201,7 +200,17 @@ describe('long random games keep all 104 cards', () => {
     let rnd = 12345;
     const next = () => (rnd = (rnd * 1103515245 + 12345) % 2147483648) / 2147483648;
     for (let t = 0; t < 2000; t++) {
-      s = play(s, s.turn, { type: 'draw', from: next() < 0.3 ? 'discard' : 'pit' });
+      if (s.phase === 'over') s = newRound({ players: 4, starter: t % 4, seed: 99 + t });
+      if (s.phase === 'play') {
+        // Indra turn after a show: no draw, just keep the game moving.
+        const h = s.hands[s.turn];
+        s = play(s, s.turn, { type: 'discard', cardId: h[0].id });
+        continue;
+      }
+      const wantDiscard = next() < 0.3;
+      const took = wantDiscard ? applyAction(s, s.turn, { type: 'draw', from: 'discard' }) : null;
+      s = took?.ok ? took.state : play(s, s.turn, { type: 'draw', from: 'pit' });
+      if (s.mustLay) s = play(s, s.turn, minimalLayDown(s, s.turn)!);
       const hand = s.hands[s.turn];
       s = play(s, s.turn, { type: 'discard', cardId: hand[Math.floor(next() * hand.length)].id });
       expect(countCards(s)).toBe(104);
@@ -219,5 +228,48 @@ describe('bonus breakdown', () => {
     expect(item).toMatchObject({ seat: 0, kind: 'meld', points: 40 });
     expect(item.label).toBe('run 3♥–9♥: 7 cards with no wild 2');
     expect(item.points).toBe(scoreRound(s)[0].bonus);
+  });
+});
+
+describe('taking the discard means laying down', () => {
+  const take: Action = { type: 'draw', from: 'discard' };
+
+  it('the round\'s very first move is exempt', () => {
+    let s = makeRound({ hands: ['3H 9C KD', '4S'], discard: '7D', pit: 'QS QH', turns: 0 });
+    s = play(s, 0, take);
+    expect(s.mustLay).toBe(false);
+    s = play(s, 0, { type: 'discard', cardId: '7Da' });
+    expect(s.turn).toBe(1);
+  });
+
+  it('after that, you must lay down or add at least one card before discarding (any card counts)', () => {
+    let s = makeRound({ hands: ['8C 8D 8S KD', '4S'], discard: '2H', pit: 'QS', turns: 3 });
+    s = play(s, 0, take);
+    expect(s.mustLay).toBe(true);
+    expect(reject(s, 0, { type: 'discard', cardId: '2Ha' })).toMatch(/lay down or add at least one card/);
+    s = play(s, 0, { type: 'meld', melds: [{ cardIds: ids('8C 8D 8S') }] }); // not using the 2♥ is fine
+    expect(s.mustLay).toBe(false);
+    s = play(s, 0, { type: 'discard', cardId: '2Ha' });
+    expect(s.turn).toBe(1);
+  });
+
+  it("you can't take it if nothing could be laid down", () => {
+    const s = makeRound({ hands: ['3H 9C KD', '4S'], discard: '7S', pit: 'QS', turns: 2 });
+    expect(reject(s, 0, take)).toMatch(/only take the discard if you can lay down/);
+  });
+
+  it('with the 10-point opening rule, you can take it only if you can open', () => {
+    const weak = makeRound({ hands: ['3H 4H 9C', '4S'], discard: '5H', pit: 'QS', turns: 2, openingRequired: [true, false] });
+    expect(reject(weak, 0, take)).toMatch(/open with 10 points/);
+    // Aces 4½ + kings 3 + four queens 4 = 11½ points: enough to open.
+    let strong = makeRound({ hands: ['AH AD AS KH KD KS QS QD QC 9C', '4S'], discard: 'QH', pit: 'JH', turns: 2, openingRequired: [true, false] });
+    strong = play(strong, 0, take);
+    expect(minimalLayDown(strong, 0)).toMatchObject({ type: 'meld' });
+  });
+
+  it('when the pit is used up, taking the last discard is always allowed', () => {
+    const s = makeRound({ hands: ['3H 9C KD', '4S'], discard: '7S', turns: 5 });
+    const r = applyAction(s, 0, take);
+    expect(r.ok && !r.state.mustLay).toBe(true);
   });
 });

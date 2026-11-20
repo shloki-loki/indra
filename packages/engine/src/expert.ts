@@ -18,7 +18,7 @@
 import { type Card, makeDoubleDeck } from './cards';
 import { meldCards } from './melds';
 import { random, shuffle } from './rng';
-import { type Action, type RoundState, applyAction, cloneRound, scoreRound, sideOf } from './round';
+import { type Action, type RoundState, applyAction, cloneRound, minimalLayDown, scoreRound, sideOf } from './round';
 import { type HeuristicLevel, chooseAdd, chooseLayDown, discardRanking, planBotTurn } from './bot';
 
 export interface ExpertOptions {
@@ -113,6 +113,17 @@ function applyAll(s: RoundState, seat: number, actions: readonly Action[]): Roun
 type MeldMode = 'advanced' | 'greedy' | 'adds-only' | 'hold';
 
 function meldPhase(state: RoundState, seat: number, mode: MeldMode): { s: RoundState; actions: Action[] } {
+  const out = meldPhaseFree(state, seat, mode);
+  // Took the discard: whatever the plan, at least one card must go down before the discard.
+  if (out.s.mustLay) {
+    const forced = minimalLayDown(out.s, seat);
+    const r = forced ? applyAction(out.s, seat, forced) : null;
+    if (forced && r?.ok) return { s: r.state, actions: [...out.actions, forced] };
+  }
+  return out;
+}
+
+function meldPhaseFree(state: RoundState, seat: number, mode: MeldMode): { s: RoundState; actions: Action[] } {
   let s = state;
   const actions: Action[] = [];
   if (mode === 'hold') return { s, actions };

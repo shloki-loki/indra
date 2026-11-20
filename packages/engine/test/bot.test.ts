@@ -114,8 +114,10 @@ describe('levels are ordered by strength', () => {
   }
 
   it('Medium beats Beginner and Advanced beats Medium on average', () => {
-    expect(duel('medium', 'beginner', 120)).toBeGreaterThan(2);
-    expect(duel('advanced', 'medium', 120)).toBeGreaterThan(2);
+    // Measured over 400 rounds (2026-11-20, with "take the discard → lay down" and the 10-point first show):
+    // Medium +9 over Beginner, Advanced about +3 over Medium.
+    expect(duel('medium', 'beginner', 400)).toBeGreaterThan(3);
+    expect(duel('advanced', 'medium', 400)).toBeGreaterThan(1);
   }, 120_000);
 });
 

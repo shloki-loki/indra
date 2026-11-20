@@ -26,6 +26,7 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
 
       <h2>Your turn</h2>
       <p>Draw one card, either the top of the pit or the top discard. Then lay down as many melds as you like, or add cards to your side's melds. End your turn by discarding one card.</p>
+      <p>Taking the top discard comes with a condition: you must lay down or add at least one card that turn (any card, not necessarily the one you took). So you can only take it when you can do that. The very first move of a round is the one exception.</p>
 
       <h2>Sets and runs</h2>
       <p>A set is three or more of the same rank, in any suits. Duplicates are fine, because there are two decks.</p>
@@ -57,11 +58,11 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
             <td>1½ points</td>
           </tr>
           <tr>
-            <th scope="row">Each show</th>
+            <th scope="row">Showing first (you take Indra)</th>
             <td>+10</td>
           </tr>
           <tr>
-            <th scope="row">Taking Indra</th>
+            <th scope="row">Showing second (ends the round)</th>
             <td>+10</td>
           </tr>
           <tr>

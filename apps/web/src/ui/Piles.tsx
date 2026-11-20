@@ -35,7 +35,7 @@ export function Piles({ pit, discard, indra, indraHolderName, canDraw, discardCa
           {Array.from({ length: pitDepth }, (_, i) => (
             <CardBack key={i} style={{ position: 'absolute', top: -i * LAYER, left: i * LAYER }} />
           ))}
-          {pitTop && <CardBack id={pitTop.id} style={{ position: 'absolute', top: -pitDepth * LAYER, left: pitDepth * LAYER }} />}
+          {pitTop && <CardBack key={pitTop.id} id={pitTop.id} style={{ position: 'absolute', top: -pitDepth * LAYER, left: pitDepth * LAYER }} />}
         </span>
         <span className="pile-label">Pit · {pit.length}</span>
       </button>
@@ -53,7 +53,7 @@ export function Piles({ pit, discard, indra, indraHolderName, canDraw, discardCa
           )}
           {indra.length === 0 && <span className="indra-empty" />}
         </span>
-        <span className="pile-label indra-label">{indraHolderName ? `Claimed by ${indraHolderName}` : 'Indra · 13'}</span>
+        <span className="pile-label indra-label">{indraHolderName ? `Claimed by ${indraHolderName}` : 'Indra'}</span>
       </div>
 
       <button
